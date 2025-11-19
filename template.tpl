@@ -196,19 +196,19 @@ ___SANDBOXED_JS_FOR_SERVER___
         logToConsole('Basket-String to parse: ' + decodedString);
         var basketArray = json.parse(decodedString);
         return basketArray.map(function (entry) { return ({
-            position_order_number: entry.id,
-            position_uuid: entry.uuid,
-            product_id: entry.pid,
-            name: entry.prn,
-            stock_keeping_unit: entry.sku,
-            product_price: entry.pri,
-            brand_name: entry.brn,
-            quantity: entry.qty,
-            discount_value: entry.dsv,
-            shipping_costs: entry.shp,
-            tax: entry.tax,
-            tracking_category: entry.trc,
-            product_category: entry.prc
+            position_order_number: (entry.id !== undefined && entry.id !== null && entry.id !== '') ? ('' + entry.id) : '',
+            position_uuid: entry.uuid || '',
+            product_id: (entry.pid !== undefined && entry.pid !== null && entry.pid !== '') ? ('' + entry.pid) : '',
+            name: entry.prn || '',
+            stock_keeping_unit: entry.sku || '',
+            product_price: (entry.pri !== undefined && entry.pri !== null && entry.pri !== '') ? ('' + entry.pri) : '',
+            brand_name: entry.brn || '',
+            quantity: (entry.qty !== undefined && entry.qty !== null && entry.qty !== '') ? ('' + entry.qty) : '',
+            discount_value: (entry.dsv !== undefined && entry.dsv !== null && entry.dsv !== '') ? ('' + entry.dsv) : '',
+            shipping_costs: (entry.shp !== undefined && entry.shp !== null && entry.shp !== '') ? ('' + entry.shp) : '',
+            tax: (entry.tax !== undefined && entry.tax !== null && entry.tax !== '') ? ('' + entry.tax) : '',
+            tracking_category: entry.trc || '',
+            product_category: entry.prc || ''
         }); });
     }
 
