@@ -43,23 +43,60 @@ ___SANDBOXED_JS_FOR_SERVER___
         unknown: 'unknown'
     };
 
+    function normalizePath(path) {
+        if (!path) {
+            return '';
+        }
+        var normalized = '';
+        var prevWasSlash = false;
+        var i = 0;
+        while (i < path.length) {
+            var char = path.charAt(i);
+            if (char === '/') {
+                if (!prevWasSlash) {
+                    normalized = normalized + char;
+                }
+                prevWasSlash = true;
+            }
+            else {
+                normalized = normalized + char;
+                prevWasSlash = false;
+            }
+            i = i + 1;
+        }
+        if (normalized.length > 1) {
+            if (normalized.charAt(normalized.length - 1) === '/') {
+                normalized = normalized.substring(0, normalized.length - 1);
+            }
+        }
+        return normalized;
+    }
     function checkForTs(input) {
         return input === "ts";
     }
     function checkForAdvertiserId(input) {
-        if (!input || input.length === 0) {
+        if (!input) {
             return false;
         }
-        for (var i = 0; i < input.length; i++) {
-            var char = input[i];
+        if (input.length === 0) {
+            return false;
+        }
+        var i = 0;
+        while (i < input.length) {
+            var char = input.charAt(i);
             if (i === 0) {
-                if (char !== "i" && !(char >= "0" && char <= "9")) {
+                if (char !== "i") {
+                    if (!(char >= "0" && char <= "9")) {
+                        return false;
+                    }
+                }
+            }
+            else {
+                if (!(char >= "0" && char <= "9")) {
                     return false;
                 }
             }
-            else if (!(char >= "0" && char <= "9")) {
-                return false;
-            }
+            i = i + 1;
         }
         return true;
     }
@@ -67,7 +104,8 @@ ___SANDBOXED_JS_FOR_SERVER___
         return input.charAt(0) === 't' && input.charAt(1) === 's' && (input.charAt(2) === 'a' || input.charAt(2) === 'v' || input.charAt(2) === 'c');
     }
     function checkFori19sTrackingPath(requestPath) {
-        var pathComponents = requestPath.split('/');
+        var normalizedPath = normalizePath(requestPath);
+        var pathComponents = normalizedPath.split('/');
         if (pathComponents.length != 4) {
             return false;
         }
@@ -77,7 +115,8 @@ ___SANDBOXED_JS_FOR_SERVER___
         return first && second && third;
     }
     function getTrackingUrlType(requestPath) {
-        var pathComponents = requestPath.split('/');
+        var normalizedPath = normalizePath(requestPath);
+        var pathComponents = normalizedPath.split('/');
         if (pathComponents.length !== 4) {
             return TrackingUrlType.unknown;
         }
@@ -95,7 +134,8 @@ ___SANDBOXED_JS_FOR_SERVER___
         }
     }
     function getAdvertiserId(requestPath) {
-        var pathComponents = requestPath.split('/');
+        var normalizedPath = normalizePath(requestPath);
+        var pathComponents = normalizedPath.split('/');
         if (pathComponents.length !== 4) {
             return '';
         }
@@ -161,8 +201,10 @@ ___SANDBOXED_JS_FOR_SERVER___
             case TrackingUrlType.conversion:
                 return EventType.I19S_CONVERSION;
             case TrackingUrlType.view:
-                return EventType.I19S_CONVERSION;
+                return EventType.I19S_VIEW;
             case TrackingUrlType.unknown:
+                return EventType.I19S_UNKNOWN;
+            default:
                 return EventType.I19S_UNKNOWN;
         }
     }
@@ -186,127 +228,103 @@ ___SANDBOXED_JS_FOR_SERVER___
         }
     }
 
+    function toStringValue(value) {
+        if (value || value === 0) {
+            return '' + value;
+        }
+        return '';
+    }
     function decodeBasketParam(logToConsole, decodeUriComponent, json, encodedString) {
-        logToConsole('call decodeBasketParam with: ' + logToConsole + ',' + decodeUriComponent + ',' + json + ',' + encodedString);
+        logToConsole('call decodeBasketParam with: ' + encodedString);
         if (!encodedString || encodedString === '') {
             logToConsole('Empty basketString: ' + encodedString);
             return [];
         }
         var decodedString = decodeUriComponent(encodedString);
         logToConsole('Basket-String to parse: ' + decodedString);
+        if (!decodedString || decodedString.charAt(0) !== '[') {
+            logToConsole('Invalid basket JSON (must be array): ' + decodedString);
+            return [];
+        }
         var basketArray = json.parse(decodedString);
         return basketArray.map(function (entry) { return ({
-            position_order_number: (entry.id !== undefined && entry.id !== null && entry.id !== '') ? ('' + entry.id) : '',
-            position_uuid: entry.uuid || '',
-            product_id: (entry.pid !== undefined && entry.pid !== null && entry.pid !== '') ? ('' + entry.pid) : '',
-            name: entry.prn || '',
-            stock_keeping_unit: entry.sku || '',
-            product_price: (entry.pri !== undefined && entry.pri !== null && entry.pri !== '') ? ('' + entry.pri) : '',
-            brand_name: entry.brn || '',
-            quantity: (entry.qty !== undefined && entry.qty !== null && entry.qty !== '') ? ('' + entry.qty) : '',
-            discount_value: (entry.dsv !== undefined && entry.dsv !== null && entry.dsv !== '') ? ('' + entry.dsv) : '',
-            shipping_costs: (entry.shp !== undefined && entry.shp !== null && entry.shp !== '') ? ('' + entry.shp) : '',
-            tax: (entry.tax !== undefined && entry.tax !== null && entry.tax !== '') ? ('' + entry.tax) : '',
-            tracking_category: entry.trc || '',
-            product_category: entry.prc || ''
+            id: toStringValue(entry.id),
+            uuid: entry.uuid || '',
+            pid: toStringValue(entry.pid),
+            prn: entry.prn || '',
+            sku: entry.sku || '',
+            pri: toStringValue(entry.pri),
+            brn: entry.brn || '',
+            qty: toStringValue(entry.qty),
+            dsv: toStringValue(entry.dsv),
+            shp: toStringValue(entry.shp),
+            tax: toStringValue(entry.tax),
+            trc: entry.trc || '',
+            prc: entry.prc || ''
         }); });
     }
 
+    function logValue(logToConsole, name, value) {
+        logToConsole(name + ': ' + value);
+        return value;
+    }
+    function getParamAndLog(logToConsole, getParam, param, name, fallback) {
+        var actualFallback = fallback || '';
+        var value = getParam(param) || actualFallback;
+        logToConsole(name + ': ' + value);
+        return value;
+    }
     function initEventVariables(json, logToConsole, decodeUriComponent, getRequestQueryParameter, getRequestHeader, getCookieValues, makeString, requestPath) {
-        var tracking_category = getRequestQueryParameter(QueryParameter.TRACKING_CATEGORY) || '';
-        logToConsole("tracking_category: ".concat(tracking_category));
-        var conversion_response_type = getConversionResponseType(getRequestQueryParameter(QueryParameter.CONVERSION_RESPONSE_TYPE));
-        logToConsole("conversion_response_type: ".concat(conversion_response_type));
-        var conversion_id = getRequestQueryParameter(QueryParameter.CONVERSION_ID) || '';
-        logToConsole("conversion_id: ".concat(conversion_id));
-        var conversion_target = getRequestQueryParameter(QueryParameter.CONVERSION_TARGET) || '';
-        logToConsole("conversion_target: ".concat(conversion_target));
-        var customer_new = getRequestQueryParameter(QueryParameter.CUSTOMER_NEW) || '';
-        logToConsole("customer_new: ".concat(customer_new));
-        var discount_code = getRequestQueryParameter(QueryParameter.DISCOUNT_CODE) || '';
-        logToConsole("discount_code: ".concat(discount_code));
-        var discount_value = getRequestQueryParameter(QueryParameter.DISCOUNT_VALUE) || '';
-        logToConsole("discount_value: ".concat(discount_value));
-        var pay_method = getRequestQueryParameter(QueryParameter.PAY_METHOD) || '';
-        logToConsole("pay_method: ".concat(pay_method));
-        var tracking_currency = getRequestQueryParameter(QueryParameter.TRACKING_CURRENCY) || '';
-        logToConsole("tracking_currency: ".concat(tracking_currency));
-        var unique_id = getRequestQueryParameter(QueryParameter.UNIQUE_ID) || '';
-        logToConsole("unique_id: ".concat(unique_id));
-        var event_name = getEventTypeFromi19TrackingUrlType(getTrackingUrlType(requestPath)) || '';
-        logToConsole("event_name: ".concat(event_name));
-        var advertiser_id = getAdvertiserId(requestPath) || '';
-        logToConsole("advertiser_id: ".concat(advertiser_id));
-        var customer_id = getRequestQueryParameter(QueryParameter.CUSTOMER_ID) || '';
-        logToConsole("customer_id: ".concat(customer_id));
-        var gdpr = getRequestQueryParameter(QueryParameter.GDPR) || '';
-        logToConsole("gdpr: ".concat(gdpr));
-        var gdpr_consent = getRequestQueryParameter(QueryParameter.GDPR_CONSENT) || '';
-        logToConsole("gdpr_consent: ".concat(gdpr_consent));
-        var http_location = getRequestQueryParameter(QueryParameter.HTTP_LOCATION) || '';
-        logToConsole("http_location: ".concat(http_location));
-        var http_referrer = getRequestQueryParameter(QueryParameter.HTTP_REFERRER) || '';
-        logToConsole("http_referrer: ".concat(http_referrer));
-        var i19s_click_cookie = getRequestQueryParameter(QueryParameter.CLICK_COOKIE) || '';
-        logToConsole("i19s_click_cookie: ".concat(i19s_click_cookie));
-        var i19s_click_ids = getRequestQueryParameter(QueryParameter.CLICK_IDS) || makeString(getCookieValues(CookieName.ICLID_COOKIE)) || '';
-        logToConsole("i19s_click_ids: ".concat(i19s_click_ids));
-        var i19s_view_cookie = getRequestQueryParameter(QueryParameter.VIEW_COOKIE) || '';
-        logToConsole("i19s_view_cookie: ".concat(i19s_view_cookie));
-        var product_id = getRequestQueryParameter(QueryParameter.PRODUCT_ID) || '';
-        logToConsole("product_id: ".concat(product_id));
-        var protocol = '';
-        var redirect_mode = getRequestQueryParameter(QueryParameter.REDIRECT_MODE) || '';
-        logToConsole("redirect_mode: ".concat(redirect_mode));
-        var session_id = getRequestQueryParameter(QueryParameter.SESSION_ID) || '';
-        logToConsole("session_id: ".concat(session_id));
-        var site_id = getRequestQueryParameter(QueryParameter.SITE_ID) || '';
-        logToConsole("site_id: ".concat(site_id));
-        var timestamp = getRequestQueryParameter(QueryParameter.TIMESTAMP) || '';
-        logToConsole("timestamp: ".concat(timestamp));
-        var tracking_domain = getRequestHeader('host') || '';
-        logToConsole("tracking_domain: ".concat(tracking_domain));
-        var tracking_url_type = getTrackingUrlType(requestPath);
-        var user_agent = getRequestHeader('user-agent') || getRequestQueryParameter(QueryParameter.USER_AGENT) || '';
-        logToConsole("user_agent: ".concat(user_agent));
-        var user_value_1 = getRequestQueryParameter(QueryParameter.USER_VALUE_1) || '';
-        logToConsole("user_value_1: ".concat(user_value_1));
-        var user_value_2 = getRequestQueryParameter(QueryParameter.USER_VALUE_2) || '';
-        logToConsole("user_value_2: ".concat(user_value_2));
-        var user_value_3 = getRequestQueryParameter(QueryParameter.USER_VALUE_3) || '';
-        logToConsole("user_value_3: ".concat(user_value_3));
-        var user_value_4 = getRequestQueryParameter(QueryParameter.USER_VALUE_4) || '';
-        logToConsole("user_value_4: ".concat(user_value_4));
-        var version = getRequestQueryParameter(QueryParameter.VERSION) || '';
-        logToConsole("version: ".concat(version));
+        var p = function (param, name) { return getParamAndLog(logToConsole, getRequestQueryParameter, param, name); };
+        var tracking_category = p(QueryParameter.TRACKING_CATEGORY, 'tracking_category');
+        var conversion_id = p(QueryParameter.CONVERSION_ID, 'conversion_id');
+        var conversion_target = p(QueryParameter.CONVERSION_TARGET, 'conversion_target');
+        var customer_new = p(QueryParameter.CUSTOMER_NEW, 'customer_new');
+        var discount_code = p(QueryParameter.DISCOUNT_CODE, 'discount_code');
+        var discount_value = p(QueryParameter.DISCOUNT_VALUE, 'discount_value');
+        var pay_method = p(QueryParameter.PAY_METHOD, 'pay_method');
+        var tracking_currency = p(QueryParameter.TRACKING_CURRENCY, 'tracking_currency');
+        var unique_id = p(QueryParameter.UNIQUE_ID, 'unique_id');
+        var customer_id = p(QueryParameter.CUSTOMER_ID, 'customer_id');
+        var gdpr = p(QueryParameter.GDPR, 'gdpr');
+        var gdpr_consent = p(QueryParameter.GDPR_CONSENT, 'gdpr_consent');
+        var http_location = p(QueryParameter.HTTP_LOCATION, 'http_location');
+        var http_referrer = p(QueryParameter.HTTP_REFERRER, 'http_referrer');
+        var i19s_click_cookie = p(QueryParameter.CLICK_COOKIE, 'i19s_click_cookie');
+        var i19s_view_cookie = p(QueryParameter.VIEW_COOKIE, 'i19s_view_cookie');
+        var product_id = p(QueryParameter.PRODUCT_ID, 'product_id');
+        var redirect_mode = p(QueryParameter.REDIRECT_MODE, 'redirect_mode');
+        var session_id = p(QueryParameter.SESSION_ID, 'session_id');
+        var site_id = p(QueryParameter.SITE_ID, 'site_id');
+        var timestamp = p(QueryParameter.TIMESTAMP, 'timestamp');
+        var user_value_1 = p(QueryParameter.USER_VALUE_1, 'user_value_1');
+        var user_value_2 = p(QueryParameter.USER_VALUE_2, 'user_value_2');
+        var user_value_3 = p(QueryParameter.USER_VALUE_3, 'user_value_3');
+        var user_value_4 = p(QueryParameter.USER_VALUE_4, 'user_value_4');
+        var version = p(QueryParameter.VERSION, 'version');
+        var ip_address = p(QueryParameter.IP_ADDRESS, 'ip_address');
+        var admedia_code = p(QueryParameter.ADMEDIA_CODE, 'admedia_code');
+        var additional_data = p(QueryParameter.ADDITIONAL_DATA, 'additional_data');
+        var adspace = p(QueryParameter.ADSPACE, 'adspace');
+        var confirmation_status = p(QueryParameter.CONFIRMATION_STATUS, 'confirmation_status');
+        var customer_age = p(QueryParameter.CUSTOMER_AGE, 'customer_age');
+        var customer_gender = p(QueryParameter.CUSTOMER_GENDER, 'customer_gender');
+        var customer_survey = p(QueryParameter.CUSTOMER_SURVEY, 'customer_survey');
+        var device_type = p(QueryParameter.DEVICE_TYPE, 'device_type');
+        var invoice_value = p(QueryParameter.INVOICE_VALUE, 'invoice_value');
+        var order_value = p(QueryParameter.ORDER_VALUE, 'order_value');
+        var request_timestamp = p(QueryParameter.REQUEST_TIMESTAMP, 'request_timestamp');
+        var subtag = p(QueryParameter.SUBTAG, 'subtag');
+        var conversion_response_type = logValue(logToConsole, 'conversion_response_type', getConversionResponseType(getRequestQueryParameter(QueryParameter.CONVERSION_RESPONSE_TYPE)));
+        var event_name = logValue(logToConsole, 'event_name', getEventTypeFromi19TrackingUrlType(getTrackingUrlType(requestPath)) || '');
+        var advertiser_id = logValue(logToConsole, 'advertiser_id', getAdvertiserId(requestPath) || '');
+        var tracking_domain = logValue(logToConsole, 'tracking_domain', getRequestHeader('host') || '');
+        var user_agent = logValue(logToConsole, 'user_agent', getRequestHeader('user-agent') || getRequestQueryParameter(QueryParameter.USER_AGENT) || '');
+        var i19s_click_ids = logValue(logToConsole, 'i19s_click_ids', getRequestQueryParameter(QueryParameter.CLICK_IDS) || makeString(getCookieValues(CookieName.ICLID_COOKIE)) || '');
         var basket = decodeBasketParam(logToConsole, decodeUriComponent, json, getRequestQueryParameter(QueryParameter.BASKET)) || [];
-        logToConsole("basket: ".concat(basket));
-        var ip_address = getRequestQueryParameter(QueryParameter.IP_ADDRESS) || '';
-        logToConsole("ip_address: ".concat(ip_address));
-        var admedia_code = getRequestQueryParameter(QueryParameter.ADMEDIA_CODE) || '';
-        logToConsole("admedia_code: ".concat(admedia_code));
-        var additional_data = getRequestQueryParameter(QueryParameter.ADDITIONAL_DATA) || '';
-        logToConsole("additional_data: ".concat(additional_data));
-        var adspace = getRequestQueryParameter(QueryParameter.ADSPACE) || '';
-        logToConsole("adspace: ".concat(adspace));
-        var confirmation_status = getRequestQueryParameter(QueryParameter.CONFIRMATION_STATUS) || '';
-        logToConsole("confirmation_status: ".concat(confirmation_status));
-        var customer_age = getRequestQueryParameter(QueryParameter.CUSTOMER_AGE) || '';
-        logToConsole("customer_age: ".concat(customer_age));
-        var customer_gender = getRequestQueryParameter(QueryParameter.CUSTOMER_GENDER) || '';
-        logToConsole("customer_gender: ".concat(customer_gender));
-        var customer_survey = getRequestQueryParameter(QueryParameter.CUSTOMER_SURVEY) || '';
-        logToConsole("customer_survey: ".concat(customer_survey));
-        var device_type = getRequestQueryParameter(QueryParameter.DEVICE_TYPE) || '';
-        logToConsole("device_type: ".concat(device_type));
-        var invoice_value = getRequestQueryParameter(QueryParameter.INVOICE_VALUE) || '';
-        logToConsole("invoice_value: ".concat(invoice_value));
-        var order_value = getRequestQueryParameter(QueryParameter.ORDER_VALUE) || '';
-        logToConsole("order_value: ".concat(order_value));
-        var request_timestamp = getRequestQueryParameter(QueryParameter.REQUEST_TIMESTAMP) || '';
-        logToConsole("request_timestamp: ".concat(request_timestamp));
-        var subtag = getRequestQueryParameter(QueryParameter.SUBTAG) || '';
-        logToConsole("subtag: ".concat(subtag));
+        logToConsole('basket: ' + basket);
+        var tracking_url_type = getTrackingUrlType(requestPath);
+        var protocol = '';
         return {
             additional_data: additional_data,
             adspace: adspace,
